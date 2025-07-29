@@ -61,9 +61,9 @@ $(BUILD_DIR)/$(LIB_TARGET): $(OBJS)
 	ar crf $@ $^
 
 # Build step for the tests
-$(BUILD_DIR)/$(TEST_TARGET): $(BUILD_DIR)/$(LIB_TARGET) $(TEST_OBJS)
+$(BUILD_DIR)/$(TEST_TARGET): $(BUILD_DIR)/$(LIB_TARGET) $(TEST_OBJS) $(OBJS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TEST_OBJS) $(LDLIBS) 
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TEST_OBJS) $(OBJS) $(LDLIBS) 
 
 .PHONY: clean
 clean:
