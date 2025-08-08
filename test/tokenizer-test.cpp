@@ -57,8 +57,10 @@ void TokenizerTest::run() {
    istringstream iss(R"(
 # this is a comment
 x = 1234
-y.z = 42
+y."z" = "\\ hello \"world\""
 56 = 78
+   'foo.bar'.baz = 'Dale "Rusty Shackleford" Gribble'
+   empty-string = ''
 )");
 
    try {

@@ -56,7 +56,7 @@ private:
    };
 
    enum class Character {
-      Any,
+      Printable,
       Digit,
       DigitPlusMinus,
       Whitespace,
@@ -71,8 +71,14 @@ private:
    void getId();
    void getChar();
    void getComment();
+   void getBasicString();
+   void getLiteralString();
+   void getEscapeSequence();
    char expect(Character charClass);
    char expect(char c);
+   void throwUnexpectedCharacter(Character expectedCharClass) const;
+
+   static bool test(int c, Character charClass);
 
    std::istream &in;
    std::vector<Token> buffer;
@@ -99,7 +105,7 @@ bool Tokenizer<NLookahead>::getToken() {
       getNewlines();
       return true;
    }
-   if (isspace(c)) {
+   if (test(c, Character::Whitespace)) {
       getWhitespace();
       return true;
    }
@@ -107,10 +113,18 @@ bool Tokenizer<NLookahead>::getToken() {
       getComment();
       return true;
    }
+   if (c == '"') {
+      getBasicString();
+      return true;
+   }
+   if (c == '\'') {
+      getLiteralString();
+      return true;
+   }
 
    static const std::string keyChars = ".[]";
    if (state == State::Key) {
-      if (isalnum(c) || c == '_' || c == '-') {
+      if (test(c, Character::Id)) {
          getId();
          return true;
       }
@@ -125,7 +139,7 @@ bool Tokenizer<NLookahead>::getToken() {
       }
    }
    else {
-      if (isdigit(c) || c == '+' || c == '-') {
+      if (test(c, Character::DigitPlusMinus)) {
          getNumber();
          return true;
       }
@@ -160,7 +174,7 @@ void Tokenizer<NLookahead>::getNumber() {
    }
 
    // Slurp up the remaining digits
-   while (c != std::char_traits<char>::eof() && isdigit(c))
+   while (c != std::char_traits<char>::eof() && test(c, Character::Digit))
    {
       token.lexeme += expect(Character::Digit);
       c = in.peek();
@@ -178,7 +192,7 @@ void Tokenizer<NLookahead>::getNumber() {
       throw SyntaxError("Integer overflows 64 bits", startLine, startCol);
    }
    else if (result.ec != std::errc{}) {
-      throw Exception("This is a bug in toml++");
+      throw Exception("Could not parse integer");
    }
 
    token.value = value;
@@ -243,7 +257,7 @@ template<int NLookahead>
 void Tokenizer<NLookahead>::getChar() {
    Token &token = buffer.emplace_back();
    token.kind = Token::Kind::Char;
-   token.lexeme += expect(Character::Any);
+   token.lexeme += expect(Character::Printable);
 }
 
 template<int NLookahead>
@@ -254,8 +268,87 @@ void Tokenizer<NLookahead>::getComment() {
 
    int c = in.peek();
    while (c != std::char_traits<char>::eof() && c != '\r' && c != '\n') {
-      token.lexeme += expect(Character::Any);
+      token.lexeme += expect(Character::Printable);
       c = in.peek();
+   }
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getBasicString() {
+   Token &token = buffer.emplace_back();
+   token.kind = Token::Kind::String;
+   token.lexeme += expect('"');
+   token.value = "";
+
+   int c = in.peek();
+   while (c != std::char_traits<char>::eof() && c != '"') {
+      if (c == '\\') {
+         getEscapeSequence();
+      }
+      else {
+         token.lexeme += expect(Character::Printable);
+         std::get<std::string>(token.value) += token.lexeme.back();
+      }
+      c = in.peek();
+   }
+   token.lexeme += expect('"');
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getLiteralString() {
+   Token &token = buffer.emplace_back();
+   token.kind = Token::Kind::String;
+   token.lexeme += expect('\'');
+   token.value = "";
+
+   int c = in.peek();
+   while (c != std::char_traits<char>::eof() && c != '\'') {
+      token.lexeme += expect(Character::Printable);
+      std::get<std::string>(token.value) += token.lexeme.back();
+      c = in.peek();
+   }
+   token.lexeme += expect('\'');
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getEscapeSequence() {
+   auto &token = buffer.back();
+
+   token.lexeme += expect('\\');
+   int c = in.peek();
+   switch (c) {
+   case 'b':
+      token.lexeme += expect('b');
+      std::get<std::string>(token.value) += '\b';
+      break;
+   case 't':
+      token.lexeme += expect('t');
+      std::get<std::string>(token.value) += '\t';
+      break;
+   case 'n':
+      token.lexeme += expect('n');
+      std::get<std::string>(token.value) += '\n';
+      break;
+   case 'f':
+      token.lexeme += expect('f');
+      std::get<std::string>(token.value) += '\f';
+      break;
+   case 'r':
+      token.lexeme += expect('r');
+      std::get<std::string>(token.value) += '\r';
+      break;
+   case '"':
+      token.lexeme += expect('"');
+      std::get<std::string>(token.value) += '"';
+      break;
+   case '\\':
+      token.lexeme += expect('\\');
+      std::get<std::string>(token.value) += '\\';
+      break;
+   case std::char_traits<char>::eof():
+      throw SyntaxError("Unexpected EOF", lineNum, colNum);
+   default:
+      throw SyntaxError("Invalid escape sequence", lineNum, colNum);
    }
 }
 
@@ -265,33 +358,9 @@ char Tokenizer<NLookahead>::expect(Character charClass) {
    if (c == std::char_traits<char>::eof()) {
       throw SyntaxError("Unexpected EOF", lineNum, colNum);
    }
-   switch (charClass)
-   {
-   case Character::Any:
-      break;
-   case Character::Digit:
-      if (!isdigit(c)) {
-         throw SyntaxError("Expected digit", lineNum, colNum);
-      }
-      break;
-   case Character::DigitPlusMinus:
-      if (!isdigit(c) && c != '+' && c != '-') {
-         throw SyntaxError("Expected digit, +, or -", lineNum, colNum);
-      }
-      break;
-   case Character::Whitespace:
-      if (!isspace(c)) {
-         throw SyntaxError("Expected space or \\t", lineNum, colNum);
-      }
-      break;
-   case Character::Id:
-      if (!isalnum(c) && c != '_' && c != '-') {
-         throw SyntaxError("Expected letter, number, _, or -", lineNum, colNum);
-      }
-      break;
-   default:
-      throw Exception("Unsupported character class "
-                      + std::to_string(static_cast<int>(charClass)));
+
+   if (!test(c, charClass)) {
+      throwUnexpectedCharacter(charClass);
    }
 
    ++colNum;
@@ -313,6 +382,48 @@ char Tokenizer<NLookahead>::expect(char c) {
    }
    ++colNum;
    return c;
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::throwUnexpectedCharacter(
+                               Character expectedCharClass) const
+{
+   switch (expectedCharClass) {
+   case Character::Printable:
+      throw SyntaxError("Invalid ASCII", lineNum, colNum);
+   case Character::Digit:
+      throw SyntaxError("Expected digit", lineNum, colNum);
+   case Character::DigitPlusMinus:
+      throw SyntaxError("Expected digit, +, or -", lineNum, colNum);
+   case Character::Whitespace:
+      throw SyntaxError("Expected space or \\t", lineNum, colNum);
+   case Character::Id:
+      throw SyntaxError("Expected letter, number, _, or -", lineNum, colNum);
+   }
+
+   throw Exception("Unsupported character class "
+                   + std::to_string(static_cast<int>(expectedCharClass)));
+}
+
+template<int NLookahead>
+bool Tokenizer<NLookahead>::test(int c, Character charClass) {
+   switch (charClass) {
+   case Character::Printable:
+      // This gives us any printable ASCII character, including spaces and tabs
+      // but excluding \r and \n
+      return c >= 32 && c <= 126;
+   case Character::Digit:
+      return isdigit(c);
+   case Character::DigitPlusMinus:
+      return isdigit(c) || c == '+' || c == '-';
+   case Character::Whitespace:
+      return isspace(c);
+   case Character::Id:
+      return isalnum(c) || c == '_' || c == '-';
+   default:
+      throw Exception("Unsupported character class "
+                      + std::to_string(static_cast<int>(charClass)));
+   }
 }
 
 } // namespace ccm::toml
