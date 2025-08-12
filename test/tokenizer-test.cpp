@@ -61,6 +61,19 @@ y."z" = "\\ hello \"world\""
 56 = 78
    'foo.bar'.baz = 'Dale "Rusty Shackleford" Gribble'
    empty-string = ''
+   ml-lit-1 = '''hello'''
+   ml-lit-2 = '''My name is 'Bob''''
+   ml-lit-3 = '''
+on a new line... or not?'''
+   ml-lit-4 = '''I [dw]on't need \d{2} apples'''
+   ml-lit-5 = '''
+The first newline is
+trimmed in raw strings.
+   All other whitespace
+   is preserved.
+'''
+   ml-lit-6 = '''Here are fifteen quotation marks: """""""""""""""'''
+   ml-lit-7 = ''''That,' she said, 'is still pointless.''''
 )");
 
    try {

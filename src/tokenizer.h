@@ -73,6 +73,7 @@ private:
    void getComment();
    void getBasicString();
    void getLiteralString();
+   void getMLLiteralString();
    void getEscapeSequence();
    char expect(Character charClass);
    char expect(char c);
@@ -308,6 +309,70 @@ void Tokenizer<NLookahead>::getLiteralString() {
       c = in.peek();
    }
    token.lexeme += expect('\'');
+
+   // At this point, we've consumed two single quotes. If there were any
+   // characters between the quotes, we're done. However, if it was an empty
+   // string, we have to be sure that it was an empty string and not the
+   // beginning of a multiline string.
+
+   if (token.lexeme.length() == 2 // 2 quotes and that's it
+       && in.peek() == '\'')
+   { 
+      token.lexeme += expect('\'');
+      getMLLiteralString();
+   }
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getMLLiteralString() {
+   auto &token = buffer.back();
+
+   int c = in.peek();
+   if (c == '\r') {
+      token.lexeme += expect('\r');
+      token.lexeme += expect('\n');
+      c = in.peek();
+   }
+   else if (c == '\n') {
+      token.lexeme += expect('\n');
+      c = in.peek();
+   }
+
+   // A multiline literal string must end with at least 3 quote marks but can
+   // end with as many as 5 (up to 2 adjacent quotes are allowed inside an ML
+   // string)
+   int numQuotes = 0;
+   while (c != std::char_traits<char>::eof() && numQuotes < 5) {
+      if (c == '\'') {
+         ++numQuotes;
+         token.lexeme += expect('\'');
+      }
+      else if (numQuotes >= 3) {
+         break;
+      }
+      else {
+         while (numQuotes > 0) {
+            // we've been racking up quotes, and we just found out they're
+            // actually part of the string, so add them to the value
+            std::get<std::string>(token.value) += '\'';
+            --numQuotes;
+         }
+         token.lexeme += c;
+         std::get<std::string>(token.value) += c;
+         expect(c);
+      }
+
+      c = in.peek();
+   }
+
+   if (numQuotes < 3) {
+      throw SyntaxError("Unexpected EOF", lineNum, colNum);
+   }
+
+   while (numQuotes > 3) {
+      std::get<std::string>(token.value) += '\'';
+      --numQuotes;
+   }
 }
 
 template<int NLookahead>
