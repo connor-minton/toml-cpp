@@ -74,6 +74,31 @@ trimmed in raw strings.
 '''
    ml-lit-6 = '''Here are fifteen quotation marks: """""""""""""""'''
    ml-lit-7 = ''''That,' she said, 'is still pointless.''''
+
+   ml-bas-1 = """
+Roses are red
+Violets are blue"""
+
+   ml-bas-2 = """
+The quick brown \
+
+
+  fox jumps over \
+    the lazy dog."""
+
+   ml-bas-3 = """\
+       The quick brown \
+       fox jumps over \
+       the lazy dog.\
+       """
+
+   ml-bas-4 = """Here are two quotation marks: "". Simple enough."""
+
+   ml-bas-5 = """Here are three quotation marks: ""\"."""
+
+   ml-bas-6 = """Here are fifteen quotation marks: ""\"""\"""\"""\"""\"."""
+
+   ml-bas-7 = """"This," she said, "is just a pointless statement.""""
 )");
 
    try {

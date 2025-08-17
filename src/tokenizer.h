@@ -2,6 +2,7 @@
 #define CCM_TOML_TOKENIZER_H
 
 #include "exception.h"
+#include "lookahead-istream.h"
 #include "token.h"
 
 #include <cctype>
@@ -72,6 +73,8 @@ private:
    void getChar();
    void getComment();
    void getBasicString();
+   void getMLBasicString();
+   void trimWhitespace();
    void getLiteralString();
    void getMLLiteralString();
    void getEscapeSequence();
@@ -81,7 +84,7 @@ private:
 
    static bool test(int c, Character charClass);
 
-   std::istream &in;
+   LookaheadIStream in;
    std::vector<Token> buffer;
    State state = State::Init;
    int lineNum = 1;
@@ -293,6 +296,107 @@ void Tokenizer<NLookahead>::getBasicString() {
       c = in.peek();
    }
    token.lexeme += expect('"');
+
+   // At this point, we've consumed two double quotes. If there were any
+   // characters between the quotes, we're done. However, if it was an empty
+   // string, we have to be sure that it was an empty string and not the
+   // beginning of a multiline string.
+
+   if (token.lexeme.length() == 2 // 2 quotes and that's it
+       && in.peek() == '"')
+   { 
+      token.lexeme += expect('"');
+      getMLBasicString();
+   }
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getMLBasicString() {
+   auto &token = buffer.back();
+
+   int c = in.peek();
+   if (c == '\r') {
+      token.lexeme += expect('\r');
+      token.lexeme += expect('\n');
+      c = in.peek();
+   }
+   else if (c == '\n') {
+      token.lexeme += expect('\n');
+      c = in.peek();
+   }
+
+   // A multiline basic string must end with at least 3 quote marks but can
+   // end with as many as 5 (up to 2 adjacent quotes are allowed inside an ML
+   // string)
+   int numQuotes = 0;
+   while (c != std::char_traits<char>::eof() && numQuotes < 5) {
+      if (c == '"') {
+         ++numQuotes;
+         token.lexeme += expect('"');
+      }
+      else if (numQuotes >= 3) {
+         break;
+      }
+      else {
+         while (numQuotes > 0) {
+            // we've been racking up quotes, and we just found out they're
+            // actually part of the string, so add them to the value
+            std::get<std::string>(token.value) += '"';
+            --numQuotes;
+         }
+
+         if (c == '\\') {
+            c = in.peek(1);
+            if (c == '\r' || c == '\n') {
+               token.lexeme += expect('\\');
+               trimWhitespace();
+            }
+            else {
+               getEscapeSequence();
+            }
+         }
+         else {
+            token.lexeme += c;
+            std::get<std::string>(token.value) += c;
+            expect(c);
+         }
+      }
+
+      c = in.peek();
+   }
+
+   if (numQuotes < 3) {
+      throw SyntaxError("Unexpected EOF", lineNum, colNum);
+   }
+
+   while (numQuotes > 3) {
+      std::get<std::string>(token.value) += '"';
+      --numQuotes;
+   }
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::trimWhitespace() {
+   auto &token = buffer.back();
+
+   int c = in.peek();
+   while (true) {
+      if (c == '\r') {
+         token.lexeme += expect('\r');
+         token.lexeme += expect('\n');
+      }
+      else if (c == '\n') {
+         token.lexeme += expect('\n');
+      }
+      else if (test(c, Character::Whitespace)) {
+         token.lexeme += expect(Character::Whitespace);
+      }
+      else {
+         break;
+      }
+
+      c = in.peek();
+   }
 }
 
 template<int NLookahead>
