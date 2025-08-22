@@ -58,8 +58,11 @@ private:
 
    enum class Character {
       Printable,
-      Digit,
-      DigitPlusMinus,
+      DecimalDigit,
+      DecimalDigitPlusMinus,
+      BinaryDigit,
+      OctalDigit,
+      HexDigit,
       Whitespace,
       Id
    };
@@ -143,7 +146,7 @@ bool Tokenizer<NLookahead>::getToken() {
       }
    }
    else {
-      if (test(c, Character::DigitPlusMinus)) {
+      if (test(c, Character::DecimalDigitPlusMinus)) {
          getNumber();
          return true;
       }
@@ -159,50 +162,116 @@ void Tokenizer<NLookahead>::getNumber() {
 
    Token &token = buffer.emplace_back();
    token.kind = Token::Kind::Integer;
-   token.lexeme += expect(Character::DigitPlusMinus);
+   token.lexeme += expect(Character::DecimalDigitPlusMinus);
 
-   // If we start with a '+' or '-', we MUST be followed by a digit
-   if (!isdigit(token.lexeme[0])) {
-      token.lexeme += expect(Character::Digit);
+   // num will contain only the characters that are necessary to parse the
+   // number.
+   std::string num;
+   int base = 10;
+   Character digitType = Character::DecimalDigit;
+
+   if (token.lexeme[0] == '0') {
+      int c = in.peek();
+      switch (c) {
+      case 'b':
+         base = 2;
+         digitType = Character::BinaryDigit;
+         break;
+      case 'o':
+         base = 8;
+         digitType = Character::OctalDigit;
+         break;
+      case 'x':
+         base = 16;
+         digitType = Character::HexDigit;
+         break;
+      }
+
+      if (base != 10) {
+         // Binary, octal, and hex numbers can have leading zeros. Scoop up the
+         // prefix, the first digit, and the rest of the leading zeros (if any)
+         token.lexeme += expect(c);
+         token.lexeme += expect(digitType);
+         if (token.lexeme.back() != '0') {
+            num += token.lexeme.back();
+         }
+         else {
+            c = in.peek();
+            while (c == '0') {
+               token.lexeme += expect('0');
+               c = in.peek();
+            }
+            // okay... there's a chance that leading zeros are the only digits,
+            // so remember that for later.
+         }
+      }
+      else if (test(c, Character::DecimalDigit)) {
+         // But decimal integers generally cannot have leading zeros. So let's
+         // go ahead and rule that out here.
+         throw SyntaxError("Integer has leading zero(s)", lineNum, colNum);
+      }
    }
+
+   // If we start with a '+' or '-', we MUST be followed by a decimal digit,
+   // AND, if that digit is zero, it must be the only digit.
+   else if (token.lexeme[0] == '+' || token.lexeme[0] == '-') {
+      if (token.lexeme[0] == '-') {
+         num += '-';
+      }
+      token.lexeme += expect(Character::DecimalDigit);
+      if (token.lexeme.back() == '0'
+          && test(in.peek(), Character::DecimalDigit))
+      {
+         throw SyntaxError("Integer has leading zero(s)", lineNum, colNum);
+      }
+
+      if (token.lexeme.back() != '0') {
+         num += token.lexeme.back();
+      }
+   }
+
+   // Otherwise we got a nonzero decimal digit
+   else {
+      num += token.lexeme.back();
+   }
+
+   // At this point, we have determined the base of the number. If the base is
+   // not 10, then the prefix and any leading zeros have been ignored. In some
+   // cases, a nonzero digit may have already been extracted. If so, it has been
+   // appended to the lexeme and `num`.
 
    int c = in.peek();
 
-   // If the first digit is a 0, there can be no further digits.
-   if (token.lexeme.back() == '0'
-       && c != std::char_traits<char>::eof()
-       && (isdigit(c) || c == '_'))
-   {
-      throw SyntaxError("Nonzero integer cannot have leading zero",
-                        startLine, startCol);
-   }
-
-   // Slurp up the remaining digits
+   // Slurp up the remaining digits. In the loop condition, we allow any digit
+   // no matter what base we're parsing, but inside the loop we expect digits of
+   // the appropriate base. This makes for some good error messages if the user
+   // accidentally mixes bases.
    while (c != std::char_traits<char>::eof()
-          && (test(c, Character::Digit) || c == '_'))
+          && (test(c, Character::HexDigit) || c == '_'))
    {
       if (c == '_') {
          token.lexeme += expect('_');
-         token.lexeme += expect(Character::Digit);
+         token.lexeme += expect(digitType);
       }
       else {
-         token.lexeme += expect(Character::Digit);
+         token.lexeme += expect(digitType);
       }
+      num += token.lexeme.back();
       c = in.peek();
    }
 
-   // Parse the lexeme, without the unnecesary characters, as an integer
-   std::string num;
-   for (char c : token.lexeme) {
-      if (test(c, Character::Digit) || c == '-') {
-         num += c;
-      }
+   // Remember it's possible to end up with an empty `num` string if a non-base-
+   // 10 number contained only leading zeros.
+   if (num.empty()) {
+      token.value = 0;
+      return;
    }
 
    int64_t value = 0;
    auto result = std::from_chars(num.c_str(),
                                  num.c_str() + num.size(),
-                                 value);
+                                 value,
+                                 base);
    if (result.ec == std::errc::result_out_of_range) {
       throw SyntaxError("Integer overflows 64 bits", startLine, startCol);
    }
@@ -571,10 +640,16 @@ void Tokenizer<NLookahead>::throwUnexpectedCharacter(
    switch (expectedCharClass) {
    case Character::Printable:
       throw SyntaxError("Invalid ASCII", lineNum, colNum);
-   case Character::Digit:
-      throw SyntaxError("Expected digit", lineNum, colNum);
-   case Character::DigitPlusMinus:
-      throw SyntaxError("Expected digit, +, or -", lineNum, colNum);
+   case Character::DecimalDigit:
+      throw SyntaxError("Expected decimal digit", lineNum, colNum);
+   case Character::DecimalDigitPlusMinus:
+      throw SyntaxError("Expected decimal digit, +, or -", lineNum, colNum);
+   case Character::BinaryDigit:
+      throw SyntaxError("Expected 0 or 1", lineNum, colNum);
+   case Character::OctalDigit:
+      throw SyntaxError("Expected octal digit", lineNum, colNum);
+   case Character::HexDigit:
+      throw SyntaxError("Expected hex digit", lineNum, colNum);
    case Character::Whitespace:
       throw SyntaxError("Expected space or \\t", lineNum, colNum);
    case Character::Id:
@@ -592,10 +667,16 @@ bool Tokenizer<NLookahead>::test(int c, Character charClass) {
       // This gives us any printable ASCII character, including spaces and tabs
       // but excluding \r and \n
       return c >= 32 && c <= 126;
-   case Character::Digit:
+   case Character::DecimalDigit:
       return isdigit(c);
-   case Character::DigitPlusMinus:
+   case Character::DecimalDigitPlusMinus:
       return isdigit(c) || c == '+' || c == '-';
+   case Character::BinaryDigit:
+      return c == '0' || c == '1';
+   case Character::OctalDigit:
+      return c >= '0' && c <= '7';
+   case Character::HexDigit:
+      return isdigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
    case Character::Whitespace:
       return isspace(c);
    case Character::Id:

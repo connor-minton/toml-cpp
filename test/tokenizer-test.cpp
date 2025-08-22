@@ -60,8 +60,24 @@ x = 1234
 p = +1234
 n = -1234
 number-with-separators = 123_456_789
+just-barely = 9223372036854775807
+just-barely-neg = -9223372036854775808
 nws2 = 1_2_3_4_5
 nws3 = -1234_5
+bin1 = 0b1001
+bin2 = 0b0110
+bin3 = 0b0000
+bin4 = 0b0
+oct1 = 0o700
+oct2 = 0o744
+oct3 = 0o000
+oct4 = 0o0
+oct5 = 0o777
+hex1 = 0x42
+hex2 = 0x0
+hex3 = 0x0000
+hex4 = 0x0f
+hex5 = 0xFF
 y."z" = "\\ hello \"world\""
 56 = 78
    'foo.bar'.baz = 'Dale "Rusty Shackleford" Gribble'
@@ -116,68 +132,31 @@ The quick brown \
       logSyntaxError(ex);
    }
 
-   istringstream iss2("x = _123_456");
+   vector<string> linesThatShouldFail = {
+      "x = _123_456",
+      "x = -12_",
+      "x = 05",
+      "x = +",
+      "x = -00",
+      "x = 0x",
+      "x = 0b12",
+      "x = 0o12345678",
+      "x = 1f",
+      "x = 9223372036854775808",
+      "x = -9223372036854775809"
+   };
 
-   try {
-      Tokenizer tokenizer(iss2);
-      while (tokenizer.more()) {
-         tokenizer.next();
+   for (const string &s : linesThatShouldFail) {
+      try {
+         istringstream iss2(s);
+         Tokenizer tokenizer(iss2);
+         while (tokenizer.more()) {
+            tokenizer.next();
+         }
+         cout << "TEST FAILED: Expected SyntaxError.\n";
       }
-      cout << "TEST FAILED: Expected SyntaxError.\n";
-   }
-   catch (const SyntaxError &ex) {
-      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
-   }
-
-   istringstream iss3("x = -12_");
-
-   try {
-      Tokenizer tokenizer(iss3);
-      while (tokenizer.more()) {
-         tokenizer.next();
+      catch (const SyntaxError &ex) {
+         cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
       }
-      cout << "TEST FAILED: Expected SyntaxError.\n";
-   }
-   catch (const SyntaxError &ex) {
-      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
-   }
-
-   istringstream iss4("x = 05");
-
-   try {
-      Tokenizer tokenizer(iss4);
-      while (tokenizer.more()) {
-         tokenizer.next();
-      }
-      cout << "TEST FAILED: Expected SyntaxError.\n";
-   }
-   catch (const SyntaxError &ex) {
-      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
-   }
-
-   istringstream iss5("x = +");
-
-   try {
-      Tokenizer tokenizer(iss5);
-      while (tokenizer.more()) {
-         tokenizer.next();
-      }
-      cout << "TEST FAILED: Expected SyntaxError.\n";
-   }
-   catch (const SyntaxError &ex) {
-      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
-   }
-
-   istringstream iss6("x = -00");
-
-   try {
-      Tokenizer tokenizer(iss6);
-      while (tokenizer.more()) {
-         tokenizer.next();
-      }
-      cout << "TEST FAILED: Expected SyntaxError.\n";
-   }
-   catch (const SyntaxError &ex) {
-      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
    }
 }
