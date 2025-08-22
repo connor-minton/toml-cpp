@@ -171,26 +171,37 @@ void Tokenizer<NLookahead>::getNumber() {
    // If the first digit is a 0, there can be no further digits.
    if (token.lexeme.back() == '0'
        && c != std::char_traits<char>::eof()
-       && isdigit(c))
+       && (isdigit(c) || c == '_'))
    {
       throw SyntaxError("Nonzero integer cannot have leading zero",
                         startLine, startCol);
    }
 
    // Slurp up the remaining digits
-   while (c != std::char_traits<char>::eof() && test(c, Character::Digit))
+   while (c != std::char_traits<char>::eof()
+          && (test(c, Character::Digit) || c == '_'))
    {
-      token.lexeme += expect(Character::Digit);
+      if (c == '_') {
+         token.lexeme += expect('_');
+         token.lexeme += expect(Character::Digit);
+      }
+      else {
+         token.lexeme += expect(Character::Digit);
+      }
       c = in.peek();
    }
 
-   // Parse the lexeme as an integer
-   const char *first = (token.lexeme[0] == '+')
-                       ? token.lexeme.c_str() + 1
-                       : token.lexeme.c_str();
+   // Parse the lexeme, without the unnecesary characters, as an integer
+   std::string num;
+   for (char c : token.lexeme) {
+      if (test(c, Character::Digit) || c == '-') {
+         num += c;
+      }
+   }
+
    int64_t value = 0;
-   auto result = std::from_chars(first, 
-                                 token.lexeme.c_str() + token.lexeme.size(),
+   auto result = std::from_chars(num.c_str(),
+                                 num.c_str() + num.size(),
                                  value);
    if (result.ec == std::errc::result_out_of_range) {
       throw SyntaxError("Integer overflows 64 bits", startLine, startCol);

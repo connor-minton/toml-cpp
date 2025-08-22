@@ -57,6 +57,11 @@ void TokenizerTest::run() {
    istringstream iss(R"(
 # this is a comment
 x = 1234
+p = +1234
+n = -1234
+number-with-separators = 123_456_789
+nws2 = 1_2_3_4_5
+nws3 = -1234_5
 y."z" = "\\ hello \"world\""
 56 = 78
    'foo.bar'.baz = 'Dale "Rusty Shackleford" Gribble'
@@ -109,5 +114,70 @@ The quick brown \
    }
    catch (const SyntaxError &ex) {
       logSyntaxError(ex);
+   }
+
+   istringstream iss2("x = _123_456");
+
+   try {
+      Tokenizer tokenizer(iss2);
+      while (tokenizer.more()) {
+         tokenizer.next();
+      }
+      cout << "TEST FAILED: Expected SyntaxError.\n";
+   }
+   catch (const SyntaxError &ex) {
+      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
+   }
+
+   istringstream iss3("x = -12_");
+
+   try {
+      Tokenizer tokenizer(iss3);
+      while (tokenizer.more()) {
+         tokenizer.next();
+      }
+      cout << "TEST FAILED: Expected SyntaxError.\n";
+   }
+   catch (const SyntaxError &ex) {
+      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
+   }
+
+   istringstream iss4("x = 05");
+
+   try {
+      Tokenizer tokenizer(iss4);
+      while (tokenizer.more()) {
+         tokenizer.next();
+      }
+      cout << "TEST FAILED: Expected SyntaxError.\n";
+   }
+   catch (const SyntaxError &ex) {
+      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
+   }
+
+   istringstream iss5("x = +");
+
+   try {
+      Tokenizer tokenizer(iss5);
+      while (tokenizer.more()) {
+         tokenizer.next();
+      }
+      cout << "TEST FAILED: Expected SyntaxError.\n";
+   }
+   catch (const SyntaxError &ex) {
+      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
+   }
+
+   istringstream iss6("x = -00");
+
+   try {
+      Tokenizer tokenizer(iss6);
+      while (tokenizer.more()) {
+         tokenizer.next();
+      }
+      cout << "TEST FAILED: Expected SyntaxError.\n";
+   }
+   catch (const SyntaxError &ex) {
+      cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
    }
 }
