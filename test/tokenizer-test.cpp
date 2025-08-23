@@ -2,6 +2,7 @@
 
 #include "tokenizer.h"
 
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 
@@ -41,6 +42,66 @@ ostream & operator<<(ostream &out, const Token &token) {
    case Token::Kind::String:
       out << "String, " << get<string>(token.value);
       break;
+   case Token::Kind::OffsetDateTime:
+      {
+         char fill = out.fill();
+         out << setfill('0');
+         auto &dateTime = get<DateTime>(token.value);
+         out << "OffsetDateTime, "
+             << setw(4) << dateTime.date.year << '-'
+             << setw(2) << dateTime.date.month << '-'
+             << setw(2) << dateTime.date.day << 'T'
+             << setw(2) << dateTime.time.hour << ':'
+             << setw(2) << dateTime.time.minute << ':'
+             << setw(2) << dateTime.time.second << '.'
+             << setw(9) << dateTime.time.nanosecond
+             << (dateTime.offset->negative ? '-' : '+')
+             << setw(2) << dateTime.offset->hours << ':'
+             << setw(2) << dateTime.offset->minutes;
+         out << setfill(fill);
+         break;
+      }
+   case Token::Kind::LocalDateTime:
+      {
+         char fill = out.fill();
+         out << setfill('0');
+         auto &dateTime = get<DateTime>(token.value);
+         out << "LocalDateTime, "
+             << setw(4) << dateTime.date.year << '-'
+             << setw(2) << dateTime.date.month << '-'
+             << setw(2) << dateTime.date.day << 'T'
+             << setw(2) << dateTime.time.hour << ':'
+             << setw(2) << dateTime.time.minute << ':'
+             << setw(2) << dateTime.time.second << '.'
+             << setw(9) << dateTime.time.nanosecond;
+         out << setfill(fill);
+         break;
+      }
+   case Token::Kind::LocalDate:
+      {
+         char fill = out.fill();
+         out << setfill('0');
+         auto &date = get<Date>(token.value);
+         out << "LocalDate, "
+             << setw(4) << date.year << '-'
+             << setw(2) << date.month << '-'
+             << setw(2) << date.day;
+         out << setfill(fill);
+         break;
+      }
+   case Token::Kind::LocalTime:
+      {
+         char fill = out.fill();
+         out << setfill('0');
+         auto &time = get<Time>(token.value);
+         out << "LocalTime, "
+             << setw(2) << time.hour << ':'
+             << setw(2) << time.minute << ':'
+             << setw(2) << time.second << '.'
+             << setw(9) << time.nanosecond;
+         out << setfill(fill);
+         break;
+      }
    }
 
    return out << ">";
@@ -93,6 +154,15 @@ sf3 = -inf # negative infinity
 sf4 = nan  # actual sNaN/qNaN encoding is implementation-specific
 sf5 = +nan # same as `nan`
 sf6 = -nan # valid, actual encoding is implementation-specific
+odt1 = 1979-05-27T07:32:00Z
+odt2 = 1979-05-27T00:32:00-07:00
+odt3 = 1979-05-27T00:32:00.999999-07:00
+odt4 = 1979-05-27 07:32:00Z
+ldt1 = 1979-05-27T07:32:00
+ldt2 = 1979-05-27T00:32:00.999999
+ld1 = 1979-05-27
+lt1 = 07:32:00
+lt2 = 00:32:00.999999
 y."z" = "\\ hello \"world\""
 56 = 78
    'foo.bar'.baz = 'Dale "Rusty Shackleford" Gribble'

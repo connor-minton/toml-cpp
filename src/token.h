@@ -1,6 +1,8 @@
 #ifndef CCM_TOML_TOKEN_H
 #define CCM_TOML_TOKEN_H
 
+#include "date-time.h"
+
 #include <cstdint>
 #include <string>
 #include <variant>
@@ -42,13 +44,33 @@ struct Token {
 
       // The token is a fully parsed string. get<string>(value) contains the
       // data that the string should contain.
-      String
+      String,
+
+      // An RFC 3339 date with offset from UTC. get<DateTime>(value) contains
+      // the parsed date, which is not checked for validity.
+      OffsetDateTime,
+
+      // A partial RFC 3339 date, consisting of the date and time but no offset.
+      // get<DateTime>(value) contains the parsed date, but the offset field
+      // does not exist.
+      LocalDateTime,
+
+      // A partial RFC 3339 date, consisting of just the date without a time or
+      // offset. get<Date>(value) contains the parsed date.
+      LocalDate,
+
+      // A partial RFC 3339 time, consisting of just the time without a date or
+      // offset. get<Time>(value) contains the parsed data.
+      LocalTime
    };
 
    using Value = std::variant<std::int64_t,
                               double,
                               bool,
-                              std::string>;
+                              std::string,
+                              DateTime,
+                              Date,
+                              Time>;
 
    Kind kind;
    Value value;

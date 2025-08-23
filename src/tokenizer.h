@@ -71,6 +71,9 @@ private:
    void fillBuffer();
    bool getToken();
    void getNumber();
+   void getDateTime();
+   void getLocalTime();
+   Time getTimePart();
    void getNewlines();
    void getWhitespace();
    void getId();
@@ -147,8 +150,28 @@ bool Tokenizer<NLookahead>::getToken() {
       }
    }
    else {
-      // includes `inf` and `nan` floats
-      if (test(c, Character::DecimalDigitPlusMinus) || c == 'i' || c == 'n') {
+      if (test(in.peek(0), Character::DecimalDigit)
+          && test(in.peek(1), Character::DecimalDigit)
+          && test(in.peek(2), Character::DecimalDigit)
+          && test(in.peek(3), Character::DecimalDigit)
+          && in.peek(4) == '-')
+      {
+         // We check for dates and times first since they can be confused for
+         // numbers.
+         getDateTime();
+         return true;
+      }
+      else if (test(in.peek(0), Character::DecimalDigit)
+               && test(in.peek(1), Character::DecimalDigit)
+               && in.peek(2) == ':')
+      {
+         getLocalTime();
+         return true;
+      }
+      else if (test(c, Character::DecimalDigitPlusMinus) || c == 'i'
+               || c == 'n')
+      {
+         // includes `inf` and `nan` floats
          getNumber();
          return true;
       }
@@ -408,6 +431,157 @@ void Tokenizer<NLookahead>::getNumber() {
       token.kind = Token::Kind::Integer;
       token.value = value;
    }
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getDateTime() {
+   auto &token = buffer.emplace_back();
+
+   DateTime dateTime;
+   std::string buf;
+
+   // Get the year
+   for (int i = 0; i < 4; ++i) {
+      buf += expect(Character::DecimalDigit);
+   }
+   token.lexeme += buf;
+   dateTime.date.year = std::stoi(buf);
+   buf.clear();
+
+   token.lexeme += expect('-');
+
+   // Get the month
+   for (int i = 0; i < 2; ++i) {
+      buf += expect(Character::DecimalDigit);
+   }
+   token.lexeme += buf;
+   dateTime.date.month = std::stoi(buf);
+   buf.clear();
+
+   token.lexeme += expect('-');
+
+   // Get the day
+   for (int i = 0; i < 2; ++i) {
+      buf += expect(Character::DecimalDigit);
+   }
+   token.lexeme += buf;
+   dateTime.date.day = std::stoi(buf);
+   buf.clear();
+
+   int c = in.peek();
+   if (c == ' ' && test(in.peek(1), Character::DecimalDigit)
+       || c == 't' || c == 'T')
+   {
+      token.lexeme += expect(c);
+      dateTime.time = getTimePart();
+      c = in.peek();
+      if (c == 'Z' || c == 'z') {
+         token.lexeme += expect(c);
+         dateTime.offset = DateTime::Offset{};
+      }
+      else if (c == '+' || c == '-') {
+         token.lexeme += expect(c);
+         dateTime.offset = DateTime::Offset{};
+         dateTime.offset->negative = (c == '-');
+         // Get the hours
+         for (int i = 0; i < 2; ++i) {
+            buf += expect(Character::DecimalDigit);
+         }
+         token.lexeme += buf;
+         dateTime.offset->hours = std::stoi(buf);
+         buf.clear();
+
+         token.lexeme += expect(':');
+
+         // Get the minutes
+         for (int i = 0; i < 2; ++i) {
+            buf += expect(Character::DecimalDigit);
+         }
+         token.lexeme += buf;
+         dateTime.offset->minutes = std::stoi(buf);
+      }
+
+      token.value = dateTime;
+      if (dateTime.offset) {
+         token.kind = Token::Kind::OffsetDateTime;
+      }
+      else {
+         token.kind = Token::Kind::LocalDateTime;
+      }
+   }
+   else {
+      // This is a local date without a time or offset.
+      token.value = dateTime.date;
+      token.kind = Token::Kind::LocalDate;
+   }
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getLocalTime() {
+   auto &token = buffer.emplace_back();
+   token.kind = Token::Kind::LocalTime;
+   auto &time = token.value.emplace<Time>();
+   time = getTimePart();
+   int c = in.peek();
+   if (c == '+' || c == '-' || c == 'z' || c == 'Z') {
+      throw SyntaxError("Lone time can have no offset", lineNum, colNum);
+   }
+}
+
+template<int NLookahead>
+Time Tokenizer<NLookahead>::getTimePart() {
+   auto &token = buffer.back();
+   Time time;
+
+   std::string buf;
+
+   // Get hour
+   for (int i = 0; i < 2; ++i) {
+      buf += expect(Character::DecimalDigit);
+   }
+   token.lexeme += buf;
+   time.hour = std::stoi(buf);
+   buf.clear();
+
+   token.lexeme += expect(':');
+
+   // Get minute
+   for (int i = 0; i < 2; ++i) {
+      buf += expect(Character::DecimalDigit);
+   }
+   token.lexeme += buf;
+   time.minute = std::stoi(buf);
+   buf.clear();
+
+   token.lexeme += expect(':');
+
+   // Get second
+   for (int i = 0; i < 2; ++i) {
+      buf += expect(Character::DecimalDigit);
+   }
+   token.lexeme += buf;
+   time.second = std::stoi(buf);
+   buf.clear();
+
+   // Get optional fractional seconds
+   if (in.peek() == '.') {
+      token.lexeme += expect('.');
+      buf += expect(Character::DecimalDigit);
+      // We support nanoseconds precision (up to .999999999)
+      int c = in.peek();
+      while (buf.size() < 9 && test(c, Character::DecimalDigit)) {
+         buf += expect(Character::DecimalDigit);
+         c = in.peek();
+      }
+      token.lexeme += buf;
+      while (buf.size() < 9) {
+         // Right pad buf with zeros before we use stoi()
+         buf += '0';
+      }
+      time.nanosecond = std::stoi(buf);
+   }
+
+   return time;
 }
 
 template<int NLookahead>
