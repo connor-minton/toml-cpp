@@ -70,6 +70,7 @@ private:
 
    void fillBuffer();
    bool getToken();
+   void getBoolean();
    void getNumber();
    void getDateTime();
    void getLocalTime();
@@ -87,6 +88,7 @@ private:
    void getEscapeSequence();
    char expect(Character charClass);
    char expect(char c);
+   std::string expect(const std::string &s);
    void throwUnexpectedCharacter(Character expectedCharClass) const;
 
    static bool test(int c, Character charClass);
@@ -175,9 +177,28 @@ bool Tokenizer<NLookahead>::getToken() {
          getNumber();
          return true;
       }
+      else if (c == 't' || c == 'f') {
+         getBoolean();
+         return true;
+      }
    }
 
    throw SyntaxError("Unexpected character", lineNum, colNum);
+}
+
+template<int NLookahead>
+void Tokenizer<NLookahead>::getBoolean() {
+   auto &token = buffer.emplace_back();
+   token.kind = Token::Kind::Boolean;
+
+   if (in.peek() == 't') {
+      token.lexeme += expect("true");
+      token.value = true;
+   }
+   else {
+      token.lexeme += expect("false");
+      token.value = false;
+   }
 }
 
 template<int NLookahead>
@@ -200,9 +221,7 @@ void Tokenizer<NLookahead>::getNumber() {
       else if (in.peek(0) == '+') {
          token.lexeme += expect('+');
       }
-      token.lexeme += expect('i');
-      token.lexeme += expect('n');
-      token.lexeme += expect('f');
+      token.lexeme += expect("inf");
       token.kind = Token::Kind::Float;
       token.value = std::numeric_limits<double>::infinity();
       if (neg) {
@@ -222,9 +241,7 @@ void Tokenizer<NLookahead>::getNumber() {
       else if (in.peek(0) == '+') {
          token.lexeme += expect('+');
       }
-      token.lexeme += expect('n');
-      token.lexeme += expect('a');
-      token.lexeme += expect('n');
+      token.lexeme += expect("nan");
       token.kind = Token::Kind::Float;
       token.value = std::numeric_limits<double>::quiet_NaN();
       if (neg) {
@@ -933,6 +950,29 @@ char Tokenizer<NLookahead>::expect(char c) {
    }
    ++colNum;
    return c;
+}
+
+template<int NLookahead>
+std::string Tokenizer<NLookahead>::expect(const std::string &s) {
+   int startLine = lineNum;
+   int startCol = colNum;
+
+   for (char c : s) {
+      int _c = in.get();
+      if (_c == std::char_traits<char>::eof()) {
+         throw SyntaxError("Unexpected EOF", lineNum, colNum);
+      }
+      if (_c != c) {
+         throw SyntaxError("Expected \"" + s + '"', startLine, startCol);
+      }
+      if (_c == '\n') {
+         ++lineNum;
+         colNum = 0;
+      }
+      ++colNum;
+   }
+
+   return s;
 }
 
 template<int NLookahead>

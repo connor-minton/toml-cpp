@@ -154,6 +154,8 @@ sf3 = -inf # negative infinity
 sf4 = nan  # actual sNaN/qNaN encoding is implementation-specific
 sf5 = +nan # same as `nan`
 sf6 = -nan # valid, actual encoding is implementation-specific
+bool1 = true
+bool2 = false
 odt1 = 1979-05-27T07:32:00Z
 odt2 = 1979-05-27T00:32:00-07:00
 odt3 = 1979-05-27T00:32:00.999999-07:00
@@ -231,7 +233,15 @@ The quick brown \
       "x = -9223372036854775809",
       "x = .7",
       "x = 7.",
-      "x = 3.e+20"
+      "x = 3.e+20",
+      "x = imf",
+      "x = +imf",
+      "x = -imf",
+      "x = non",
+      "x = +non",
+      "x = -non",
+      "x = ture",
+      "x = flase"
    };
 
    for (const string &s : linesThatShouldFail) {
