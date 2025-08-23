@@ -8,6 +8,7 @@
 #include <cctype>
 #include <charconv>
 #include <istream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -146,7 +147,8 @@ bool Tokenizer<NLookahead>::getToken() {
       }
    }
    else {
-      if (test(c, Character::DecimalDigitPlusMinus)) {
+      // includes `inf` and `nan` floats
+      if (test(c, Character::DecimalDigitPlusMinus) || c == 'i' || c == 'n') {
          getNumber();
          return true;
       }
@@ -161,7 +163,53 @@ void Tokenizer<NLookahead>::getNumber() {
    int startCol = colNum;
 
    Token &token = buffer.emplace_back();
-   token.kind = Token::Kind::Integer;
+
+   // Let's get inf and nan out of the way...
+   if (in.peek(0) == 'i'
+       || in.peek(0) == '-' && in.peek(1) == 'i'
+       || in.peek(0) == '+' && in.peek(1) == 'i')
+   {
+      bool neg = false;
+      if (in.peek(0) == '-') {
+         neg = true;
+         token.lexeme += expect('-');
+      }
+      else if (in.peek(0) == '+') {
+         token.lexeme += expect('+');
+      }
+      token.lexeme += expect('i');
+      token.lexeme += expect('n');
+      token.lexeme += expect('f');
+      token.kind = Token::Kind::Float;
+      token.value = std::numeric_limits<double>::infinity();
+      if (neg) {
+         token.value = -std::get<double>(token.value);
+      }
+      return;
+   }
+   else if (in.peek(0) == 'n'
+            || in.peek(0) == '-' && in.peek(1) == 'n'
+            || in.peek(0) == '+' && in.peek(1) == 'n')
+   {
+      bool neg = false;
+      if (in.peek(0) == '-') {
+         neg = true;
+         token.lexeme += expect('-');
+      }
+      else if (in.peek(0) == '+') {
+         token.lexeme += expect('+');
+      }
+      token.lexeme += expect('n');
+      token.lexeme += expect('a');
+      token.lexeme += expect('n');
+      token.kind = Token::Kind::Float;
+      token.value = std::numeric_limits<double>::quiet_NaN();
+      if (neg) {
+         token.value = -std::get<double>(token.value);
+      }
+      return;
+   }
+
    token.lexeme += expect(Character::DecimalDigitPlusMinus);
 
    // num will contain only the characters that are necessary to parse the
@@ -249,7 +297,14 @@ void Tokenizer<NLookahead>::getNumber() {
    while (c != std::char_traits<char>::eof()
           && (test(c, Character::HexDigit) || c == '_'))
    {
-      if (c == '_') {
+      // ...but since 'e' and 'E' are considered hex digits, they get flagged
+      // here even though we expect them to appear in some floating point
+      // numbers! So if we see an e/E, we'll break so we can start parsing a
+      // float.
+      if (c == 'e' || c == 'E') {
+         break;
+      }
+      else if (c == '_') {
          token.lexeme += expect('_');
          token.lexeme += expect(digitType);
       }
@@ -267,19 +322,92 @@ void Tokenizer<NLookahead>::getNumber() {
       return;
    }
 
-   int64_t value = 0;
-   auto result = std::from_chars(num.c_str(),
-                                 num.c_str() + num.size(),
-                                 value,
-                                 base);
-   if (result.ec == std::errc::result_out_of_range) {
-      throw SyntaxError("Integer overflows 64 bits", startLine, startCol);
-   }
-   else if (result.ec != std::errc{}) {
-      throw Exception("Could not parse integer");
-   }
+   if (base == 10 && (c == '.' || c == 'e' || c == 'E')) {
+      // A decimal integer followed by a '.' or e/E indicates a floating point
+      // number.
+      bool gotFraction = false;
+      bool gotExponent = false;
+      // Remember: 'e' and 'E' are hex digits :)
+      while (test(c, Character::HexDigit) || c == '.' || c == '_')
+      {
+         if (c == '.') {
+            if (gotExponent) {
+               throw SyntaxError("Decimal point after exponent",
+                                 lineNum, colNum);
+            }
+            else if (gotFraction) {
+               throw SyntaxError("Floating point number with more than one "
+                                 "decimal point", lineNum, colNum);
+            }
+            else {
+               token.lexeme += expect('.');
+               num += '.';
+               token.lexeme += expect(Character::DecimalDigit);
+               num += token.lexeme.back();
+               gotFraction = true;
+            }
+         }
+         else if (c == 'e' || c == 'E') {
+            if (gotExponent) {
+               throw SyntaxError("Floating point number with more than one "
+                                 "exponent part", lineNum, colNum);
+            }
+            else {
+               token.lexeme += expect(c);
+               num += c;
+               token.lexeme += expect(Character::DecimalDigitPlusMinus);
+               num += token.lexeme.back();
+               if (!test(token.lexeme.back(), Character::DecimalDigit)) {
+                  token.lexeme += expect(Character::DecimalDigit);
+                  num += token.lexeme.back();
+               }
+               gotExponent = true;
+            }
+         }
+         else if (c == '_') {
+            token.lexeme += expect('_');
+            token.lexeme += expect(Character::DecimalDigit);
+            num += token.lexeme.back();
+         }
+         else {
+            token.lexeme += expect(Character::DecimalDigit);
+            num += token.lexeme.back();
+         }
 
-   token.value = value;
+         c = in.peek();
+      }
+
+      double value = 0;
+      auto result = std::from_chars(num.c_str(),
+                                    num.c_str() + num.size(),
+                                    value);
+      if (result.ec == std::errc::result_out_of_range) {
+         throw SyntaxError("Floating point overflow/underflow",
+                           startLine, startCol);
+      }
+      else if (result.ec != std::errc{}) {
+         throw Exception("Could not parse floating point number");
+      }
+
+      token.kind = Token::Kind::Float;
+      token.value = value;
+   }
+   else {
+      int64_t value = 0;
+      auto result = std::from_chars(num.c_str(),
+                                    num.c_str() + num.size(),
+                                    value,
+                                    base);
+      if (result.ec == std::errc::result_out_of_range) {
+         throw SyntaxError("Integer overflows 64 bits", startLine, startCol);
+      }
+      else if (result.ec != std::errc{}) {
+         throw Exception("Could not parse integer");
+      }
+
+      token.kind = Token::Kind::Integer;
+      token.value = value;
+   }
 }
 
 template<int NLookahead>

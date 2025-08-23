@@ -78,6 +78,21 @@ hex2 = 0x0
 hex3 = 0x0000
 hex4 = 0x0f
 hex5 = 0xFF
+flt1 = +1.0
+flt2 = 3.1415
+flt3 = -0.01
+flt4 = 5e+22
+flt5 = 1e06
+flt6 = -2E-2
+flt7 = 6.626e-34
+flt8 = 224_617.445_991_228
+flt9 = 1_2.34_56
+sf1 = inf  # positive infinity
+sf2 = +inf # positive infinity
+sf3 = -inf # negative infinity
+sf4 = nan  # actual sNaN/qNaN encoding is implementation-specific
+sf5 = +nan # same as `nan`
+sf6 = -nan # valid, actual encoding is implementation-specific
 y."z" = "\\ hello \"world\""
 56 = 78
    'foo.bar'.baz = 'Dale "Rusty Shackleford" Gribble'
@@ -143,7 +158,10 @@ The quick brown \
       "x = 0o12345678",
       "x = 1f",
       "x = 9223372036854775808",
-      "x = -9223372036854775809"
+      "x = -9223372036854775809",
+      "x = .7",
+      "x = 7.",
+      "x = 3.e+20"
    };
 
    for (const string &s : linesThatShouldFail) {
