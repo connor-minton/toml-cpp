@@ -4,6 +4,10 @@
 class TokenizerTest {
 public:
    void run();
+
+private:
+   void testCommas();
+   void testTables();
 };
 
 #endif

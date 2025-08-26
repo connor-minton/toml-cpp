@@ -57,6 +57,12 @@ private:
       Value
    };
 
+   enum class Context {
+      Init,
+      Array,
+      InlineTable
+   };
+
    enum class Character {
       Printable,
       DecimalDigit,
@@ -96,6 +102,7 @@ private:
    LookaheadIStream in;
    std::vector<Token> buffer;
    State state = State::Init;
+   std::vector<Context> context = { Context::Init };
    int lineNum = 1;
    int colNum = 1;
 };
@@ -114,7 +121,13 @@ bool Tokenizer<NLookahead>::getToken() {
       return false;
 
    if (c == '\r' || c == '\n') {
-      state = State::Key;
+      if (context.back() == Context::InlineTable) {
+         throw SyntaxError("Unexpected newline in inline table",
+                           lineNum, colNum);
+      }
+      else if (context.back() == Context::Init) {
+         state = State::Key;
+      }
       getNewlines();
       return true;
    }
@@ -134,6 +147,17 @@ bool Tokenizer<NLookahead>::getToken() {
       getLiteralString();
       return true;
    }
+   if (c == '}') {
+      // We would put this case in the State::Value section, but you can
+      // actually encounter a '}' in both value and key states (empty table).
+      if (context.back() != Context::InlineTable) {
+         throw SyntaxError("Unexpected '}'", lineNum, colNum);
+      }
+      state = State::Value;
+      context.pop_back();
+      getChar();
+      return true;
+   }
 
    static const std::string keyChars = ".[]";
    if (state == State::Key) {
@@ -144,6 +168,18 @@ bool Tokenizer<NLookahead>::getToken() {
       if (c == '=') {
          state = State::Value;
          getChar();
+         return true;
+      }
+      if (c == '[' && in.peek(1) == '[') {
+         auto &token = buffer.emplace_back();
+         token.kind = Token::Kind::ArrayTableOpen;
+         token.lexeme = expect("[[");
+         return true;
+      }
+      if (c == ']' && in.peek(1) == ']') {
+         auto &token = buffer.emplace_back();
+         token.kind = Token::Kind::ArrayTableClose;
+         token.lexeme = expect("]]");
          return true;
       }
       if (keyChars.find(c) != std::string::npos) {
@@ -179,6 +215,35 @@ bool Tokenizer<NLookahead>::getToken() {
       }
       else if (c == 't' || c == 'f') {
          getBoolean();
+         return true;
+      }
+      else if (c == '[') {
+         context.push_back(Context::Array);
+         getChar();
+         return true;
+      }
+      else if (c == ']') {
+         if (context.back() != Context::Array) {
+            throw SyntaxError("Unexpected ']'", lineNum, colNum);
+         }
+         context.pop_back();
+         getChar();
+         return true;
+      }
+      else if (c == '{') {
+         state = State::Key;
+         context.push_back(Context::InlineTable);
+         getChar();
+         return true;
+      }
+      else if (c == ',') {
+         if (context.back() == Context::InlineTable) {
+            state = State::Key;
+         }
+         else if (context.back() == Context::Init) {
+            throw SyntaxError("Unexpected ','", lineNum, colNum);
+         }
+         getChar();
          return true;
       }
    }
@@ -358,8 +423,7 @@ void Tokenizer<NLookahead>::getNumber() {
    // Remember it's possible to end up with an empty `num` string if a non-base-
    // 10 number contained only leading zeros.
    if (num.empty()) {
-      token.value = 0;
-      return;
+      num += '0';
    }
 
    if (base == 10 && (c == '.' || c == 'e' || c == 'E')) {

@@ -102,6 +102,12 @@ ostream & operator<<(ostream &out, const Token &token) {
          out << setfill(fill);
          break;
       }
+   case Token::Kind::ArrayTableOpen:
+      out << "ArrayTableOpen";
+      break;
+   case Token::Kind::ArrayTableClose:
+      out << "ArrayTableClose";
+      break;
    }
 
    return out << ">";
@@ -207,6 +213,17 @@ The quick brown \
    ml-bas-6 = """Here are fifteen quotation marks: ""\"""\"""\"""\"""\"."""
 
    ml-bas-7 = """"This," she said, "is just a pointless statement.""""
+[[products]]
+name = "Hammer"
+sku = 738594937
+
+[[products]]  # empty table within the array
+
+[[products]]
+name = "Nail"
+sku = 284758393
+
+color = "gray"
 )");
 
    try {
@@ -241,7 +258,8 @@ The quick brown \
       "x = +non",
       "x = -non",
       "x = ture",
-      "x = flase"
+      "x = flase",
+      "x = \"uh oh...\n\""
    };
 
    for (const string &s : linesThatShouldFail) {
@@ -256,5 +274,98 @@ The quick brown \
       catch (const SyntaxError &ex) {
          cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
       }
+   }
+
+   testCommas();
+   testTables();
+}
+
+void TokenizerTest::testCommas() {
+   istringstream iss(R"(
+integers = [ 1, 2, 3 ]
+colors = [ "red", "yellow", "green" ]
+nested_arrays_of_ints = [ [ 1, 2 ], [3, 4, 5] ]
+nested_mixed_array = [ [ 1, 2 ], ["a", "b", "c"] ]
+string_array = [ "all", 'strings', """are the same""", '''type''' ]
+
+# Mixed-type arrays are allowed
+numbers = [ 0.1, 0.2, 0.5, 1, 2, 5 ]
+contributors = [
+  "Foo Bar <foo@example.com>",
+  { name = "Baz Qux", email = [
+                        "bazqux@example.com",
+                        "bazqux@gmail.com",
+                      ], url = "https://example.com/bazqux" }
+]
+
+integers2 = [
+  1, 2, 3
+]
+
+integers3 = [
+  1,
+  2, # this is ok
+]
+
+empty-table = { }
+)");
+
+   try {
+      Tokenizer<0> tokenizer(iss);
+      while (tokenizer.more()) {
+         cout << tokenizer.next() << '\n';
+      }
+   }
+   catch (const SyntaxError &ex) {
+      logSyntaxError(ex);
+   }
+
+   vector<string> linesThatShouldFail = {
+      "particles = [ { x = 3, y = 4, z = 5 ] }",
+      "x = [ [ ] ] ]",
+      "foo = { x = { y = 8 } } }"
+   };
+
+   for (const string &s : linesThatShouldFail) {
+      try {
+         istringstream iss2(s);
+         Tokenizer tokenizer(iss2);
+         while (tokenizer.more()) {
+            tokenizer.next();
+         }
+         cout << "TEST FAILED: Expected SyntaxError.\n";
+      }
+      catch (const SyntaxError &ex) {
+         cout << "TEST PASSED (got SyntaxError: " << ex.what() << ")\n";
+      }
+   }
+}
+
+void TokenizerTest::testTables() {
+   istringstream iss(R"(
+[table-1]
+key1 = "some string"
+key2 = 123
+
+[table-2]
+key1 = "another string"
+key2 = 456
+
+[dog."tater.man"]
+type.name = "pug"
+
+[a.b.c]            # this is best practice
+[ d.e.f ]          # same as [d.e.f]
+[ g .  h  . i ]    # same as [g.h.i]
+)");
+
+   try {
+      Tokenizer tokenizer(iss);
+      while (tokenizer.more()) {
+         cout << tokenizer.next() << '\n';
+      }
+   }
+   catch (const SyntaxError &ex) {
+      logSyntaxError(ex);
    }
 }

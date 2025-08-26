@@ -60,8 +60,14 @@ struct Token {
       LocalDate,
 
       // A partial RFC 3339 time, consisting of just the time without a date or
-      // offset. get<Time>(value) contains the parsed data.
-      LocalTime
+      // offset. get<Time>(value) contains the parsed time.
+      LocalTime,
+
+      // lexeme == "[["
+      ArrayTableOpen,
+
+      // lexeme == "]]"
+      ArrayTableClose
    };
 
    using Value = std::variant<std::int64_t,
